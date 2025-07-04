@@ -153,8 +153,13 @@ async function getTravelLLMResponse(userMessage, conversationData) {
     `;
 
     // Using Google Gemini API with updated model name (gemini-1.5-flash)
+    const modelName = 'gemini-1.5-flash';
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+    
+    console.log(`Making API call to: ${apiUrl}`);
+    
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      apiUrl,
       {
         contents: [{
           parts: [{ text: systemPrompt + "\n\nUser message: " + userMessage }]
