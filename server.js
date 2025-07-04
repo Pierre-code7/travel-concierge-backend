@@ -277,19 +277,21 @@ async function getTravelLLMResponse(userMessage, conversationData) {
         .insert(updatedConversation);
     }
     
-    // Send response back to WhatsApp
-    const twimlResponse = `
-      <Response>
-        <Message>${aiResult.response}</Message>
-      </Response>
-    `;
-    
-    res.set('Content-Type', 'text/xml');
-    res.send(twimlResponse);
+    return {
+      response: aiResult.response,
+      extracted_info: aiResult.extracted_info,
+      next_question: aiResult.next_question,
+      completion_percentage: newCompletionPercentage
+    };
     
   } catch (error) {
     console.error('LLM Error:', error);
-    res.status(500).send('Error processing message');
+    return {
+      response: "Thank you for your message! Let me help you plan your perfect trip. Where would you like to travel to?",
+      extracted_info: {},
+      next_question: 'destination',
+      completion_percentage: 0
+    };
   }
 }
 
@@ -343,7 +345,17 @@ app.post('/webhook', async (req, res) => {
     }
     
     // Get AI response
-    await getTravelLLMResponse(Body, conversation);
+    const aiResult = await getTravelLLMResponse(Body, conversation);
+    
+    // Send response back to WhatsApp
+    const twimlResponse = `
+      <Response>
+        <Message>${aiResult.response}</Message>
+      </Response>
+    `;
+    
+    res.set('Content-Type', 'text/xml');
+    res.send(twimlResponse);
     
   } catch (error) {
     console.error('Webhook error:', error);
