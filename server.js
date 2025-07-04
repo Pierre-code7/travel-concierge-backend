@@ -137,6 +137,7 @@ class TravelInfoExtractor {
 
   static extractSpecificField(message, field) {
     const trimmed = message.trim();
+    const lowerMessage = trimmed.toLowerCase();
     
     // Destination/departure location logic
     if (['destination', 'departure_location'].includes(field)) {
@@ -147,21 +148,64 @@ class TravelInfoExtractor {
       }
     }
 
-    // Numbers for travelers
+    // Smart travelers count extraction
     if (field === 'travelers_count') {
+      // Direct numbers
       const num = parseInt(trimmed);
       if (!isNaN(num) && num > 0 && num <= 20) {
         return num.toString();
       }
-      if (trimmed.toLowerCase().includes('solo')) return '1';
-      if (trimmed.toLowerCase().includes('couple')) return '2';
+      
+      // Relationship-based counting
+      if (lowerMessage.includes('solo') || lowerMessage.includes('alone') || lowerMessage.includes('just me')) {
+        return '1';
+      }
+      if (lowerMessage.includes('couple') || lowerMessage.includes('two of us')) {
+        return '2';
+      }
+      if (lowerMessage.includes('my wife') || lowerMessage.includes('my husband') || 
+          lowerMessage.includes('my partner') || lowerMessage.includes('me and my')) {
+        return '2';
+      }
+      if (lowerMessage.includes('family of')) {
+        const familyMatch = trimmed.match(/family of (\d+)/i);
+        if (familyMatch) return familyMatch[1];
+      }
+      if (lowerMessage.includes('with my') && lowerMessage.includes('kids')) {
+        return '4'; // Assume 2 adults + 2 kids as default
+      }
+      
+      // Count people mentioned (me, wife, husband, etc.)
+      let count = 0;
+      if (lowerMessage.includes('me') || lowerMessage.includes('i ')) count++;
+      if (lowerMessage.includes('wife') || lowerMessage.includes('husband') || 
+          lowerMessage.includes('partner')) count++;
+      if (lowerMessage.includes('friend')) count++;
+      
+      if (count >= 2) return count.toString();
     }
 
-    // Budget
+    // Smart budget extraction with currency preservation
     if (field === 'budget') {
+      // Match currency with amount
+      const currencyMatch = trimmed.match(/(\d+(?:,\d{3})*(?:\.\d{2})?)\s*(euros?|eur|€|dollars?|usd|\$|pounds?|gbp|£)/i);
+      if (currencyMatch) {
+        const amount = currencyMatch[1];
+        const currency = currencyMatch[2].toLowerCase();
+        
+        if (currency.includes('eur') || currency.includes('€')) {
+          return `€${amount}`;
+        } else if (currency.includes('pound') || currency.includes('gbp') || currency.includes('£')) {
+          return `£${amount}`;
+        } else {
+          return `${amount}`;
+        }
+      }
+      
+      // Just number, assume USD
       const budgetMatch = trimmed.match(/(\d+(?:,\d{3})*(?:\.\d{2})?)/);
       if (budgetMatch) {
-        return `$${budgetMatch[1]}`;
+        return `${budgetMatch[1]}`;
       }
     }
 
@@ -176,17 +220,18 @@ class TravelInfoExtractor {
   static normalizeValue(field, value) {
     switch (field) {
       case 'travelers_count':
-        if (value.toLowerCase().includes('solo')) return '1';
-        if (value.toLowerCase().includes('couple')) return '2';
+        const lowerValue = value.toLowerCase();
+        if (lowerValue.includes('solo') || lowerValue.includes('alone')) return '1';
+        if (lowerValue.includes('couple') || lowerValue.includes('two of us')) return '2';
+        if (lowerValue.includes('my wife') || lowerValue.includes('my husband') || 
+            lowerValue.includes('my partner')) return '2';
+        
         const num = parseInt(value);
         return isNaN(num) ? value : num.toString();
       
       case 'budget':
-        if (value.includes('k')) {
-          const amount = parseInt(value) * 1000;
-          return `$${amount.toLocaleString()}`;
-        }
-        return value.startsWith('$') ? value : `$${value}`;
+        // Don't modify budget here since it's already handled in extractSpecificField
+        return value;
       
       default:
         return value;
@@ -247,10 +292,12 @@ class ConversationManager {
     for (const field of fieldOrder) {
       if (!this.memory.travelInfo[field]) {
         this.memory.expectedField = field;
+        console.log(`➡️ Next field needed: ${field}`);
         return field;
       }
     }
     this.memory.expectedField = null;
+    console.log('🎉 All fields completed!');
     return null;
   }
 
@@ -310,7 +357,7 @@ class ResponseGenerator {
       destination: `${value} is a fantastic choice!`,
       departure_location: `Great, traveling from ${value}.`,
       journey_dates: `Perfect timing - ${value}.`,
-      travelers_count: value === '1' ? 'A solo adventure!' : `Lovely, ${value} travelers.`,
+      travelers_count: this.getTravelersAcknowledgment(value),
       budget: `Working with ${value} - got it!`,
       travel_style: `${value} sounds amazing!`,
       accommodation_preference: `${value} accommodation preference noted.`,
@@ -319,6 +366,22 @@ class ResponseGenerator {
     };
     
     return acknowledgments[field] || 'Thanks for that information!';
+  }
+
+  static getTravelersAcknowledgment(value) {
+    const numValue = parseInt(value);
+    if (!isNaN(numValue)) {
+      switch (numValue) {
+        case 1: return 'A solo adventure!';
+        case 2: return 'Perfect for a couple!';
+        case 3: return 'Great for 3 travelers!';
+        case 4: return 'Lovely for a family of 4!';
+        default: return `Wonderful for ${value} travelers!`;
+      }
+    }
+    
+    // If it's not a number, it might be descriptive text
+    return 'Perfect! I understand your travel group.';
   }
 
   static getFieldQuestion(field, currentInfo) {
@@ -356,7 +419,8 @@ async function handleConversation(userMessage, phoneNumber, userName) {
     const context = conversation.getContext();
     
     console.log(`📊 Current state: ${context.state}, Progress: ${context.progress}%`);
-    console.log(`📋 Travel info: ${Object.keys(context.travelInfo).join(', ')}`);
+    console.log(`📋 Travel info (${Object.keys(context.travelInfo).length}/15):`, 
+      Object.keys(context.travelInfo).map(key => `${key}="${context.travelInfo[key]}"`).join(', '));
     
     // Extract information from user message
     const nextField = conversation.getNextField();
