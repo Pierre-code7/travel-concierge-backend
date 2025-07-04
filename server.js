@@ -1,9 +1,10 @@
-// server.js - Travel Concierge AI Backend
+// server.js - Travel Concierge AI Backend - UPDATED FOR RAILWAY REDEPLOY
 // Add this at the very top of server.js for debugging
 console.log('Environment check:');
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'MISSING');
 console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'MISSING');
 console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? 'SET' : 'MISSING');
+console.log('RAILWAY REDEPLOY TRIGGERED - Using gemini-1.5-flash model');
 
 require('dotenv').config();
 
