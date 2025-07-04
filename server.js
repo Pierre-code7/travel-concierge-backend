@@ -192,38 +192,25 @@ function parseGeminiJSON(rawResponse) {
 async function getTravelLLMResponse(userMessage, conversationData) {
   try {
     const systemPrompt = `
-    You are a professional travel concierge assistant. Your role is to:
-    1. Help collect travel information systematically
-    2. Provide helpful, friendly responses
-    3. Extract and store travel preferences accurately
-    4. Guide users through the travel planning process
-    
-    Current conversation status:
-    - Next question: ${conversationData.next_question_key || 'destination'}
-    - Completion: ${conversationData.completion_percentage || 0}%
-    - Travel info collected: ${JSON.stringify(conversationData.travel_info || {})}
-    
-    IMPORTANT: Respond with ONLY a valid JSON object, no markdown formatting:
+    You are a professional travel concierge assistant. Your job is to collect the user's travel preferences step by step.
+
+    Here is the information collected so far:
+    ${JSON.stringify(conversationData.travel_info || {}, null, 2)}
+
+    The user's latest message is:
+    "${userMessage}"
+
+    Instructions:
+    - ONLY update the fields in "extracted_info" that are clearly mentioned in the user's latest message.
+    - For all other fields, leave them as null or do not include them.
+    - Respond in this JSON format (no markdown, no extra text):
+
     {
-      "response": "your helpful response",
+      "response": "Your friendly reply and the next question",
       "extracted_info": {
-        "destination": "if mentioned",
-        "departure_location": "if mentioned",
-        "journey_dates": "if mentioned",
-        "travel_style": "if mentioned",
-        "travel_pace": "if mentioned",
-        "travelers_count": "if mentioned",
-        "budget": "if mentioned",
-        "spending_priorities": "if mentioned",
-        "interests": "if mentioned",
-        "accommodation_preference": "if mentioned",
-        "accommodation_type": "if mentioned",
-        "important_amenities": "if mentioned",
-        "location_preference": "if mentioned",
-        "dietary_restrictions": "if mentioned",
-        "accessibility_requirements": "if mentioned"
+        // Only fields mentioned in the user's latest message
       },
-      "next_question": "next question key or null if complete",
+      "next_question": "the next question key or null if complete",
       "completion_percentage": "updated percentage"
     }
     `;
@@ -246,15 +233,63 @@ async function getTravelLLMResponse(userMessage, conversationData) {
     const aiResponse = response.data.candidates[0].content.parts[0].text;
     
     // Use the robust JSON parser
-    return parseGeminiJSON(aiResponse);
+    const aiResult = parseGeminiJSON(aiResponse);
+    
+    // Update travel info with extracted data
+    const updatedTravelInfo = {
+      ...conversationData.travel_info,
+      ...aiResult.extracted_info
+    };
+    
+    // Calculate new completion percentage
+    const newCompletionPercentage = calculateCompletionPercentage(updatedTravelInfo);
+    
+    // Determine next question
+    const nextQuestion = aiResult.next_question || getNextQuestion(updatedTravelInfo);
+    
+    // Update conversation
+    const updatedConversation = {
+      phone_number: conversationData.phone_number,
+      user_name: conversationData.user_name,
+      messages: [
+        ...conversationData.messages,
+        {
+          timestamp: new Date().toISOString(),
+          user: userMessage,
+          ai: aiResult.response
+        }
+      ],
+      travel_info: updatedTravelInfo,
+      next_question_key: nextQuestion,
+      completion_percentage: newCompletionPercentage,
+      status: nextQuestion ? 'collecting_info' : 'ready_for_planning',
+      last_activity: new Date().toISOString()
+    };
+    
+    if (conversationData.id) {
+      await supabase
+        .from('travel_conversations')
+        .update(updatedConversation)
+        .eq('id', conversationData.id);
+    } else {
+      await supabase
+        .from('travel_conversations')
+        .insert(updatedConversation);
+    }
+    
+    // Send response back to WhatsApp
+    const twimlResponse = `
+      <Response>
+        <Message>${aiResult.response}</Message>
+      </Response>
+    `;
+    
+    res.set('Content-Type', 'text/xml');
+    res.send(twimlResponse);
+    
   } catch (error) {
     console.error('LLM Error:', error);
-    return {
-      response: "I'm here to help plan your perfect trip! Where would you like to travel to?",
-      extracted_info: {},
-      next_question: "destination",
-      completion_percentage: 0
-    };
+    res.status(500).send('Error processing message');
   }
 }
 
@@ -308,59 +343,7 @@ app.post('/webhook', async (req, res) => {
     }
     
     // Get AI response
-    const aiResult = await getTravelLLMResponse(Body, conversation);
-    
-    // Update travel info with extracted data
-    const updatedTravelInfo = {
-      ...conversation.travel_info,
-      ...aiResult.extracted_info
-    };
-    
-    // Calculate new completion percentage
-    const newCompletionPercentage = calculateCompletionPercentage(updatedTravelInfo);
-    
-    // Determine next question
-    const nextQuestion = aiResult.next_question || getNextQuestion(updatedTravelInfo);
-    
-    // Update conversation
-    const updatedConversation = {
-      phone_number: phoneNumber,
-      user_name: ProfileName || conversation.user_name,
-      messages: [
-        ...conversation.messages,
-        {
-          timestamp: new Date().toISOString(),
-          user: Body,
-          ai: aiResult.response
-        }
-      ],
-      travel_info: updatedTravelInfo,
-      next_question_key: nextQuestion,
-      completion_percentage: newCompletionPercentage,
-      status: nextQuestion ? 'collecting_info' : 'ready_for_planning',
-      last_activity: new Date().toISOString()
-    };
-    
-    if (conversation.id) {
-      await supabase
-        .from('travel_conversations')
-        .update(updatedConversation)
-        .eq('id', conversation.id);
-    } else {
-      await supabase
-        .from('travel_conversations')
-        .insert(updatedConversation);
-    }
-    
-    // Send response back to WhatsApp
-    const twimlResponse = `
-      <Response>
-        <Message>${aiResult.response}</Message>
-      </Response>
-    `;
-    
-    res.set('Content-Type', 'text/xml');
-    res.send(twimlResponse);
+    await getTravelLLMResponse(Body, conversation);
     
   } catch (error) {
     console.error('Webhook error:', error);
