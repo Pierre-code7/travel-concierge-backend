@@ -113,6 +113,81 @@ const TRAVEL_QUESTIONS = {
 
 const QUESTION_KEYS = Object.keys(TRAVEL_QUESTIONS);
 
+// Enhanced JSON parsing function for Gemini responses
+function parseGeminiJSON(rawResponse) {
+  try {
+    console.log('Raw Gemini response:', rawResponse);
+    
+    // Method 1: Direct JSON parse (if already clean)
+    try {
+      return JSON.parse(rawResponse);
+    } catch (e) {
+      console.log('Direct parse failed, cleaning...');
+    }
+    
+    // Method 2: Remove markdown code blocks
+    let cleaned = rawResponse
+      .replace(/```json\n?/gi, '')     // Remove ```json
+      .replace(/```\n?/gi, '')         // Remove closing ```
+      .replace(/`{3}json\n?/gi, '')    // Alternative format
+      .replace(/`{3}\n?/gi, '')        // Alternative closing
+      .trim();
+    
+    try {
+      return JSON.parse(cleaned);
+    } catch (e) {
+      console.log('Markdown cleaning failed, extracting JSON...');
+    }
+    
+    // Method 3: Extract JSON object from text
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+      try {
+        return JSON.parse(cleaned);
+      } catch (e) {
+        console.log('JSON extraction failed, manual parsing...');
+      }
+    }
+    
+    // Method 4: Manual field extraction (fallback)
+    console.log('All parsing methods failed, using manual extraction');
+    
+    // Extract response field
+    const responseMatch = rawResponse.match(/"response":\s*"([^"]*(?:\\.[^"]*)*)"/);
+    const response = responseMatch ? responseMatch[1].replace(/\\"/g, '"') : "Thank you for that information! Let me help you plan your perfect trip.";
+    
+    // Extract extractedInfo (basic)
+    const extractedInfo = {};
+    if (rawResponse.includes('destination')) {
+      const destMatch = rawResponse.match(/"destination":\s*"([^"]*(?:\\.[^"]*)*)"/);
+      if (destMatch) extractedInfo.destination = destMatch[1];
+    }
+    
+    // Extract nextQuestionKey
+    const nextKeyMatch = rawResponse.match(/"next_question":\s*"([^"]*(?:\\.[^"]*)*)"/);
+    const nextQuestion = nextKeyMatch ? nextKeyMatch[1] : 'departure_location';
+    
+    return {
+      response: response,
+      extracted_info: extractedInfo,
+      next_question: nextQuestion,
+      completion_percentage: 0
+    };
+    
+  } catch (error) {
+    console.error('All parsing methods failed:', error);
+    
+    // Ultimate fallback
+    return {
+      response: "Thank you for your message! Let me help you plan your perfect trip. Where would you like to travel to?",
+      extracted_info: {},
+      next_question: 'destination',
+      completion_percentage: 0
+    };
+  }
+}
+
 // Get AI response for travel conversation
 async function getTravelLLMResponse(userMessage, conversationData) {
   try {
@@ -128,7 +203,7 @@ async function getTravelLLMResponse(userMessage, conversationData) {
     - Completion: ${conversationData.completion_percentage || 0}%
     - Travel info collected: ${JSON.stringify(conversationData.travel_info || {})}
     
-    Respond in JSON format:
+    IMPORTANT: Respond with ONLY a valid JSON object, no markdown formatting:
     {
       "response": "your helpful response",
       "extracted_info": {
@@ -169,7 +244,9 @@ async function getTravelLLMResponse(userMessage, conversationData) {
     );
 
     const aiResponse = response.data.candidates[0].content.parts[0].text;
-    return JSON.parse(aiResponse);
+    
+    // Use the robust JSON parser
+    return parseGeminiJSON(aiResponse);
   } catch (error) {
     console.error('LLM Error:', error);
     return {
