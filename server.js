@@ -1,12 +1,44 @@
 // server.js - Travel Concierge AI Backend
+// Add this at the very top of server.js for debugging
+console.log('Environment check:');
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'MISSING');
+console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'MISSING');
+console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? 'SET' : 'MISSING');
+
+require('dotenv').config();
+
+// Rest of your existing code...
 const express = require('express');
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
+const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+
+// Add CORS middleware
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: '🌍 Travel Concierge AI Backend is running!',
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      health: '/health',
+      webhook: '/webhook',
+      conversations: '/api/conversations'
+    }
+  });
+});
 
 // Initialize Supabase
 const supabase = createClient(
