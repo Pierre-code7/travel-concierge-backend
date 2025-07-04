@@ -1,23 +1,19 @@
-// server.js - Travel Concierge AI Backend - UPDATED FOR RAILWAY REDEPLOY HEHE
-// Add this at the very top of server.js for debugging
+// server.js - Intelligent Travel Concierge with Smart Conversation Flow
+console.log('🧠 INTELLIGENT TRAVEL CONCIERGE - Starting up...');
 console.log('Environment check:');
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'MISSING');
 console.log('SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY ? 'SET' : 'MISSING');
 console.log('GEMINI_API_KEY:', process.env.GEMINI_API_KEY ? 'SET' : 'MISSING');
-console.log('RAILWAY REDEPLOY TRIGGERED - Using gemini-1.5-flash model');
 
 require('dotenv').config();
 
-// Rest of your existing code...
 const express = require('express');
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 const cors = require('cors');
-require('dotenv').config();
 
 const app = express();
 
-// Add CORS middleware
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
@@ -30,14 +26,10 @@ app.use(express.urlencoded({ extended: true }));
 // Root route
 app.get('/', (req, res) => {
   res.json({
-    message: '🌍 Travel Concierge AI Backend is running!',
+    message: '🧠 Intelligent Travel Concierge AI',
     status: 'OK',
-    timestamp: new Date().toISOString(),
-    endpoints: {
-      health: '/health',
-      webhook: '/webhook',
-      conversations: '/api/conversations'
-    }
+    features: ['Smart Conversation', 'Context Awareness', 'Natural Flow'],
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -47,279 +39,225 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-// Travel questions configuration
-const TRAVEL_QUESTIONS = {
-  destination: {
-    question: "Great! Where would you like to travel to?",
-    followUp: "Wonderful choice! "
-  },
-  departure_location: {
-    question: "Where will you be traveling from?",
-    followUp: "Perfect! "
-  },
-  journey_dates: {
-    question: "When would you like to start and end your journey?",
-    followUp: "Excellent! "
-  },
-  travel_style: {
-    question: "What type of travel experience are you looking for? (Adventure, Cultural, Relaxation, Luxury, Budget-friendly, etc.)",
-    followUp: "Great choice! "
-  },
-  travel_pace: {
-    question: "How would you describe your preferred travel pace? (Relaxed, Balanced, or Busy/Intensive)",
-    followUp: "Perfect! "
-  },
-  travelers_count: {
-    question: "How many people will be traveling?",
-    followUp: "Got it! "
-  },
-  budget: {
-    question: "What's your total budget for this trip?",
-    followUp: "Thank you! "
-  },
-  spending_priorities: {
-    question: "Where would you like to prioritize your spending? (Accommodation, Experiences, Food, Transportation, Shopping)",
-    followUp: "Excellent! "
-  },
-  interests: {
-    question: "What interests you most? (Culture, Shopping, Nightlife, Wellness, Beach, Nature, History, Food, etc.)",
-    followUp: "Fantastic! "
-  },
-  accommodation_preference: {
-    question: "What's your accommodation preference? (Budget, Comfort, Luxury, Unique/Unusual)",
-    followUp: "Perfect! "
-  },
-  accommodation_type: {
-    question: "What type of accommodation do you prefer? (Hotel, Resort, Apartment, Villa, Hostel, etc.)",
-    followUp: "Great! "
-  },
-  important_amenities: {
-    question: "What amenities are important to you? (WiFi, Pool, Gym, Spa, Restaurant, etc.)",
-    followUp: "Noted! "
-  },
-  location_preference: {
-    question: "Where would you prefer to stay? (City center, Near the sea, Quiet area, Near attractions, etc.)",
-    followUp: "Excellent! "
-  },
-  dietary_restrictions: {
-    question: "Do you have any dietary restrictions or preferences? (Vegetarian, Vegan, Gluten-free, Allergies, etc.)",
-    followUp: "Thank you for sharing! "
-  },
-  accessibility_requirements: {
-    question: "Do you have any accessibility requirements? (Mobility, Hearing, Visual, etc.)",
-    followUp: "Thank you! "
-  }
+// Travel questions in logical order
+const TRAVEL_FLOW = [
+  { key: 'destination', question: 'Where would you like to travel to?' },
+  { key: 'departure_location', question: 'Where will you be traveling from?' },
+  { key: 'journey_dates', question: 'When would you like to travel?' },
+  { key: 'travelers_count', question: 'How many people will be traveling?' },
+  { key: 'budget', question: 'What\'s your approximate budget for this trip?' },
+  { key: 'travel_style', question: 'What type of experience are you looking for? (adventure, relaxation, culture, luxury, etc.)' },
+  { key: 'accommodation_preference', question: 'What\'s your accommodation preference? (budget, comfort, luxury, unique)' },
+  { key: 'interests', question: 'What interests you most? (culture, food, nightlife, nature, shopping, history, etc.)' },
+  { key: 'travel_pace', question: 'Do you prefer a relaxed, balanced, or busy travel pace?' },
+  { key: 'spending_priorities', question: 'Where would you like to prioritize spending? (accommodation, food, activities, shopping)' },
+  { key: 'accommodation_type', question: 'What type of accommodation do you prefer? (hotel, resort, apartment, villa, etc.)' },
+  { key: 'location_preference', question: 'Where would you prefer to stay? (city center, near beach, quiet area, etc.)' },
+  { key: 'important_amenities', question: 'What amenities are important to you? (wifi, pool, gym, spa, etc.)' },
+  { key: 'dietary_restrictions', question: 'Do you have any dietary restrictions?' },
+  { key: 'accessibility_requirements', question: 'Any accessibility requirements we should know about?' }
+];
+
+// Smart extraction patterns
+const EXTRACTION_PATTERNS = {
+  destination: /(?:going to|travel to|visit|destination|trip to)\s+([A-Za-z\s,]+)/i,
+  departure_location: /(?:from|leaving from|starting from|departing from)\s+([A-Za-z\s,]+)/i,
+  budget: /(?:\$|USD|€|EUR|£|GBP)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*(?:\$|USD|€|EUR|£|GBP|dollars?|euros?|pounds?)?/i,
+  travelers_count: /(\d+)\s*(?:people|person|traveler|pax|of us)/i,
+  journey_dates: /(?:january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2}\/\d{1,2}|\d{1,2}-\d{1,2}|\d{4})/i
 };
 
-const QUESTION_KEYS = Object.keys(TRAVEL_QUESTIONS);
-
-// Enhanced JSON parsing function for Gemini responses
-function parseGeminiJSON(rawResponse) {
-  try {
-    console.log('Raw Gemini response:', rawResponse);
-    
-    // Method 1: Direct JSON parse (if already clean)
-    try {
-      return JSON.parse(rawResponse);
-    } catch (e) {
-      console.log('Direct parse failed, cleaning...');
-    }
-    
-    // Method 2: Remove markdown code blocks
-    let cleaned = rawResponse
-      .replace(/```json\n?/gi, '')     // Remove ```json
-      .replace(/```\n?/gi, '')         // Remove closing ```
-      .replace(/`{3}json\n?/gi, '')    // Alternative format
-      .replace(/`{3}\n?/gi, '')        // Alternative closing
-      .trim();
-    
-    try {
-      return JSON.parse(cleaned);
-    } catch (e) {
-      console.log('Markdown cleaning failed, extracting JSON...');
-    }
-    
-    // Method 3: Extract JSON object from text
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleaned = jsonMatch[0];
-      try {
-        return JSON.parse(cleaned);
-      } catch (e) {
-        console.log('JSON extraction failed, manual parsing...');
-      }
-    }
-    
-    // Method 4: Manual field extraction (fallback)
-    console.log('All parsing methods failed, using manual extraction');
-    
-    // Extract response field
-    const responseMatch = rawResponse.match(/"response":\s*"([^"]*(?:\\.[^"]*)*)"/);
-    const response = responseMatch ? responseMatch[1].replace(/\\"/g, '"') : "Thank you for that information! Let me help you plan your perfect trip.";
-    
-    // Extract extractedInfo (basic)
-    const extractedInfo = {};
-    if (rawResponse.includes('destination')) {
-      const destMatch = rawResponse.match(/"destination":\s*"([^"]*(?:\\.[^"]*)*)"/);
-      if (destMatch) extractedInfo.destination = destMatch[1];
-    }
-    
-    // Extract nextQuestionKey
-    const nextKeyMatch = rawResponse.match(/"next_question":\s*"([^"]*(?:\\.[^"]*)*)"/);
-    const nextQuestion = nextKeyMatch ? nextKeyMatch[1] : 'departure_location';
-    
-    return {
-      response: response,
-      extracted_info: extractedInfo,
-      next_question: nextQuestion,
-      completion_percentage: 0
-    };
-    
-  } catch (error) {
-    console.error('All parsing methods failed:', error);
-    
-    // Ultimate fallback
-    return {
-      response: "Thank you for your message! Let me help you plan your perfect trip. Where would you like to travel to?",
-      extracted_info: {},
-      next_question: 'destination',
-      completion_percentage: 0
-    };
-  }
-}
-
-// Get AI response for travel conversation
-async function getTravelLLMResponse(userMessage, conversationData) {
-  try {
-    const systemPrompt = `
-    You are a professional travel concierge assistant. Your job is to collect the user's travel preferences step by step.
-
-    Here is the information collected so far:
-    ${JSON.stringify(conversationData.travel_info || {}, null, 2)}
-
-    The user's latest message is:
-    "${userMessage}"
-
-    Instructions:
-    - Extract as much information as possible from the user's latest message for these fields:
-      destination, departure_location, journey_dates, travel_style, travel_pace, travelers_count, budget, spending_priorities, interests, accommodation_preference, accommodation_type, important_amenities, location_preference, dietary_restrictions, accessibility_requirements.
-    - Use only these field names in "extracted_info".
-    - If a field can be reasonably inferred from the user's message, fill it in. If not, set it to null.
-    - After extracting, merge with the previous info (the backend will do this).
-    - In your "response", always:
-      1. Acknowledge what the user just provided.
-      2. Briefly summarize what you know so far (if more than one field is filled).
-      3. Ask for the next missing piece of information, using the next_question key.
-    - For the next question, use ONLY these keys: ${Object.keys(TRAVEL_QUESTIONS).join(', ')}. Do not invent new keys.
-    - Respond in this JSON format (no markdown, no extra text):
-
-    {
-      "response": "Your friendly reply, summary so far, and the next question",
-      "extracted_info": {
-        // Only fields mentioned in the user's latest message, using the allowed field names
-      },
-      "next_question": "the next question key or null if complete",
-      "completion_percentage": "updated percentage"
-    }
-    `;
-
-    // Using Google Gemini API with updated model name (gemini-1.5-flash)
-    const modelName = 'gemini-1.5-flash';
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${process.env.GEMINI_API_KEY}`;
-    
-    console.log(`Making API call to: ${apiUrl}`);
-    
-    const response = await axios.post(
-      apiUrl,
-      {
-        contents: [{
-          parts: [{ text: systemPrompt + "\n\nUser message: " + userMessage }]
-        }]
-      }
-    );
-
-    const aiResponse = response.data.candidates[0].content.parts[0].text;
-    
-    // Use the robust JSON parser
-    const aiResult = parseGeminiJSON(aiResponse);
-    
-    // Update travel info with extracted data
-    const updatedTravelInfo = {
-      ...conversationData.travel_info,
-      ...aiResult.extracted_info
-    };
-    
-    // Calculate new completion percentage
-    const newCompletionPercentage = calculateCompletionPercentage(updatedTravelInfo);
-    
-    // Determine next question
-    const nextQuestion = aiResult.next_question || getNextQuestion(updatedTravelInfo);
-    
-    // Update conversation
-    const updatedConversation = {
-      phone_number: conversationData.phone_number,
-      user_name: conversationData.user_name,
-      messages: [
-        ...conversationData.messages,
-        {
-          timestamp: new Date().toISOString(),
-          user: userMessage,
-          ai: aiResult.response
-        }
-      ],
-      travel_info: updatedTravelInfo,
-      next_question_key: nextQuestion,
-      completion_percentage: newCompletionPercentage,
-      status: nextQuestion ? 'collecting_info' : 'ready_for_planning',
-      last_activity: new Date().toISOString()
-    };
-    
-    if (conversationData.id) {
-      await supabase
-        .from('travel_conversations')
-        .update(updatedConversation)
-        .eq('id', conversationData.id);
-    } else {
-      await supabase
-        .from('travel_conversations')
-        .insert(updatedConversation);
-    }
-    
-    return {
-      response: aiResult.response,
-      extracted_info: aiResult.extracted_info,
-      next_question: aiResult.next_question,
-      completion_percentage: newCompletionPercentage
-    };
-    
-  } catch (error) {
-    console.error('LLM Error:', error);
-    return {
-      response: "Thank you for your message! Let me help you plan your perfect trip. Where would you like to travel to?",
-      extracted_info: {},
-      next_question: 'destination',
-      completion_percentage: 0
-    };
-  }
-}
-
 // Calculate completion percentage
-function calculateCompletionPercentage(travelInfo) {
-  const totalQuestions = QUESTION_KEYS.length;
-  const answeredQuestions = Object.keys(travelInfo).filter(key => 
-    travelInfo[key] && travelInfo[key].trim() !== ''
+function calculateProgress(travelInfo) {
+  const completed = Object.values(travelInfo).filter(value => 
+    value && value.toString().trim() !== ''
   ).length;
-  return Math.round((answeredQuestions / totalQuestions) * 100);
+  return Math.round((completed / TRAVEL_FLOW.length) * 100);
 }
 
-// Get next question
-function getNextQuestion(currentInfo) {
-  for (const key of QUESTION_KEYS) {
-    if (!currentInfo[key] || currentInfo[key].trim() === '') {
-      return key;
+// Get next question intelligently
+function getNextQuestion(travelInfo) {
+  for (const item of TRAVEL_FLOW) {
+    if (!travelInfo[item.key] || travelInfo[item.key].toString().trim() === '') {
+      return item;
     }
   }
-  return null; // All questions answered
+  return null; // All complete
+}
+
+// Smart information extraction
+function extractTravelInfo(message, currentInfo, expectedField) {
+  const extracted = {};
+  const lowerMessage = message.toLowerCase().trim();
+  
+  console.log(`🔍 Extracting from: "${message}" | Expected: ${expectedField}`);
+  
+  // If we're expecting a specific field, try to map the message to it
+  if (expectedField && !currentInfo[expectedField]) {
+    // Simple mapping - if user just says a location name and we need destination
+    if (['destination', 'departure_location'].includes(expectedField)) {
+      // Common city/country names or travel-related context
+      if (message.length < 50 && !lowerMessage.includes('?') && 
+          (lowerMessage.match(/^[a-z\s,.-]+$/i) || lowerMessage.includes('from'))) {
+        extracted[expectedField] = message.trim();
+        console.log(`✅ Mapped "${message}" to ${expectedField}`);
+        return extracted;
+      }
+    }
+    
+    // For other fields, try direct mapping if it's a simple answer
+    if (['travelers_count', 'budget', 'travel_style', 'accommodation_preference'].includes(expectedField)) {
+      if (message.length < 30) {
+        extracted[expectedField] = message.trim();
+        console.log(`✅ Mapped "${message}" to ${expectedField}`);
+        return extracted;
+      }
+    }
+  }
+  
+  // Pattern-based extraction for any field
+  Object.entries(EXTRACTION_PATTERNS).forEach(([field, pattern]) => {
+    if (!currentInfo[field]) {
+      const match = message.match(pattern);
+      if (match) {
+        extracted[field] = match[1] || match[0];
+        console.log(`✅ Pattern matched: ${field} = "${extracted[field]}"`);
+      }
+    }
+  });
+  
+  // Special logic for budget
+  if (!currentInfo.budget && lowerMessage.includes('budget')) {
+    const budgetMatch = message.match(/(\d+(?:,\d{3})*(?:\.\d{2})?)/);
+    if (budgetMatch) {
+      extracted.budget = `$${budgetMatch[1]}`;
+    }
+  }
+  
+  // Special logic for travelers count
+  if (!currentInfo.travelers_count) {
+    if (lowerMessage.includes('solo') || lowerMessage.includes('alone')) {
+      extracted.travelers_count = '1';
+    } else if (lowerMessage.includes('couple') || lowerMessage.includes('two of us')) {
+      extracted.travelers_count = '2';
+    } else {
+      const numMatch = message.match(/(\d+)/);
+      if (numMatch && parseInt(numMatch[1]) <= 20) {
+        extracted.travelers_count = numMatch[1];
+      }
+    }
+  }
+  
+  console.log('🎯 Extracted info:', extracted);
+  return extracted;
+}
+
+// Generate natural, context-aware responses
+function generateNaturalResponse(extractedInfo, currentInfo, nextQuestion, userMessage) {
+  const responses = [];
+  
+  // Acknowledge what was extracted
+  Object.keys(extractedInfo).forEach(key => {
+    const value = extractedInfo[key];
+    switch (key) {
+      case 'destination':
+        responses.push(`${value} sounds amazing!`);
+        break;
+      case 'departure_location':
+        responses.push(`Great, traveling from ${value}.`);
+        break;
+      case 'journey_dates':
+        responses.push(`Perfect timing for ${value}.`);
+        break;
+      case 'budget':
+        responses.push(`Got it, working with a ${value} budget.`);
+        break;
+      case 'travelers_count':
+        responses.push(value === '1' ? 'A solo adventure!' : `Lovely, ${value} travelers.`);
+        break;
+      default:
+        responses.push(`Thanks for sharing that!`);
+    }
+  });
+  
+  // Add progress context
+  const progress = calculateProgress({...currentInfo, ...extractedInfo});
+  if (progress > 20) {
+    responses.push(`We're making great progress!`);
+  }
+  
+  // Ask next question naturally
+  if (nextQuestion) {
+    const contextualAsks = {
+      'departure_location': currentInfo.destination ? 
+        `Where will you be flying from to ${currentInfo.destination}?` : 
+        'Where will you be traveling from?',
+      'journey_dates': 'What dates work best for your trip?',
+      'travelers_count': 'How many people will be joining you?',
+      'budget': 'What\'s your budget range for this trip?',
+      'travel_style': 'What kind of experience are you hoping for?',
+      'accommodation_preference': 'Any preference for your accommodation style?'
+    };
+    
+    const questionText = contextualAsks[nextQuestion.key] || nextQuestion.question;
+    responses.push(questionText);
+  } else {
+    responses.push(`Perfect! I have everything I need. Let me connect you with our travel expert to create your personalized itinerary! 🎉`);
+  }
+  
+  return responses.join(' ');
+}
+
+// Main conversation handler
+async function handleTravelConversation(userMessage, conversationData) {
+  try {
+    console.log(`💬 Processing: "${userMessage}"`);
+    
+    const currentInfo = conversationData.travel_info || {};
+    const nextQuestion = getNextQuestion(currentInfo);
+    const expectedField = nextQuestion ? nextQuestion.key : null;
+    
+    console.log(`📋 Current info:`, Object.keys(currentInfo).length, 'fields filled');
+    console.log(`❓ Expected field: ${expectedField}`);
+    
+    // Extract information from user message
+    const extractedInfo = extractTravelInfo(userMessage, currentInfo, expectedField);
+    
+    // Merge with existing info
+    const updatedInfo = { ...currentInfo, ...extractedInfo };
+    
+    // Get next question after update
+    const newNextQuestion = getNextQuestion(updatedInfo);
+    const progress = calculateProgress(updatedInfo);
+    
+    // Generate natural response
+    const response = generateNaturalResponse(extractedInfo, currentInfo, newNextQuestion, userMessage);
+    
+    console.log(`📊 Progress: ${progress}%`);
+    console.log(`📝 Response: "${response}"`);
+    
+    return {
+      response,
+      extractedInfo,
+      updatedInfo,
+      nextQuestion: newNextQuestion,
+      progress
+    };
+    
+  } catch (error) {
+    console.error('❌ Conversation error:', error);
+    
+    const nextQuestion = getNextQuestion(conversationData.travel_info || {});
+    return {
+      response: nextQuestion ? 
+        `Thanks! ${nextQuestion.question}` : 
+        "Thanks for all the details! Let me get our travel expert to help you.",
+      extractedInfo: {},
+      updatedInfo: conversationData.travel_info || {},
+      nextQuestion: nextQuestion,
+      progress: calculateProgress(conversationData.travel_info || {})
+    };
+  }
 }
 
 // WhatsApp webhook endpoint
@@ -328,23 +266,27 @@ app.post('/webhook', async (req, res) => {
     const { Body, From, ProfileName } = req.body;
     const phoneNumber = From.replace('whatsapp:', '');
     
-    console.log(`Received message from ${phoneNumber}: ${Body}`);
+    console.log(`📱 Message from ${phoneNumber}: "${Body}"`);
     
-    // Get or create conversation
-    let { data: conversation } = await supabase
+    // Get existing conversation
+    let { data: conversation, error: fetchError } = await supabase
       .from('travel_conversations')
       .select('*')
       .eq('phone_number', phoneNumber)
       .single();
     
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      throw fetchError;
+    }
+    
+    // Initialize if new conversation
     if (!conversation) {
-      // Create new conversation
+      console.log('👤 New conversation started');
       conversation = {
         phone_number: phoneNumber,
-        user_name: ProfileName || 'Unknown',
+        user_name: ProfileName || 'Unknown Traveler',
         messages: [],
         travel_info: {},
-        next_question_key: 'destination',
         completion_percentage: 0,
         status: 'collecting_info',
         created_at: new Date().toISOString(),
@@ -352,26 +294,68 @@ app.post('/webhook', async (req, res) => {
       };
     }
     
-    // Get AI response
-    const aiResult = await getTravelLLMResponse(Body, conversation);
+    // Process the conversation
+    const result = await handleTravelConversation(Body, conversation);
     
-    // Send response back to WhatsApp
+    // Update conversation data
+    const updatedConversation = {
+      ...conversation,
+      messages: [
+        ...conversation.messages,
+        {
+          timestamp: new Date().toISOString(),
+          user: Body,
+          ai: result.response
+        }
+      ],
+      travel_info: result.updatedInfo,
+      next_question_key: result.nextQuestion ? result.nextQuestion.key : null,
+      completion_percentage: result.progress,
+      status: result.nextQuestion ? 'collecting_info' : 'ready_for_planning',
+      last_activity: new Date().toISOString()
+    };
+    
+    // Save to database
+    if (conversation.id) {
+      console.log('💾 Updating conversation');
+      await supabase
+        .from('travel_conversations')
+        .update(updatedConversation)
+        .eq('id', conversation.id);
+    } else {
+      console.log('💾 Creating new conversation');
+      await supabase
+        .from('travel_conversations')
+        .insert(updatedConversation);
+    }
+    
+    // Send response to WhatsApp
     const twimlResponse = `
       <Response>
-        <Message>${aiResult.response}</Message>
+        <Message>${result.response}</Message>
       </Response>
     `;
     
     res.set('Content-Type', 'text/xml');
     res.send(twimlResponse);
     
+    console.log('✅ Response sent successfully');
+    
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).send('Error processing message');
+    console.error('❌ Webhook error:', error);
+    
+    const fallbackResponse = `
+      <Response>
+        <Message>Thanks for your message! I'm here to help plan your perfect trip. Could you tell me where you'd like to travel?</Message>
+      </Response>
+    `;
+    
+    res.set('Content-Type', 'text/xml');
+    res.send(fallbackResponse);
   }
 });
 
-// Webhook verification for WhatsApp
+// Webhook verification
 app.get('/webhook', (req, res) => {
   const verify_token = process.env.VERIFY_TOKEN;
   const mode = req.query['hub.mode'];
@@ -379,13 +363,15 @@ app.get('/webhook', (req, res) => {
   const challenge = req.query['hub.challenge'];
   
   if (mode && token === verify_token) {
+    console.log('✅ Webhook verified');
     res.status(200).send(challenge);
   } else {
+    console.log('❌ Webhook verification failed');
     res.status(403).send('Forbidden');
   }
 });
 
-// API for dashboard to get conversations
+// API endpoints for dashboard
 app.get('/api/conversations', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -401,7 +387,6 @@ app.get('/api/conversations', async (req, res) => {
   }
 });
 
-// API to update conversation status
 app.patch('/api/conversations/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -425,43 +410,17 @@ app.patch('/api/conversations/:id', async (req, res) => {
   }
 });
 
-// Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    version: 'Intelligent Conversation AI',
+    timestamp: new Date().toISOString() 
+  });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Travel Concierge AI Server running on port ${PORT}`);
-  console.log(`Webhook URL: https://your-app.railway.app/webhook`);
+  console.log(`🚀 Intelligent Travel Concierge running on port ${PORT}`);
+  console.log(`🧠 Features: Smart extraction, Natural conversation, Context awareness`);
+  console.log(`📱 Webhook: /webhook | 📊 API: /api/conversations`);
 });
-
-// .env file (for environment variables)
-/*
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-GEMINI_API_KEY=your_gemini_api_key
-VERIFY_TOKEN=your_webhook_verify_token
-*/
-
-// package.json
-/*
-{
-  "name": "whatsapp-concierge-poc",
-  "version": "1.0.0",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
-  },
-  "dependencies": {
-    "express": "^4.18.2",
-    "axios": "^1.6.0",
-    "@supabase/supabase-js": "^2.38.0",
-    "dotenv": "^16.3.1"
-  },
-  "engines": {
-    "node": "18.x"
-  }
-}
-*/
