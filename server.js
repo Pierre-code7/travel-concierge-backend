@@ -201,14 +201,18 @@ async function getTravelLLMResponse(userMessage, conversationData) {
     "${userMessage}"
 
     Instructions:
-    - ONLY update the fields in "extracted_info" that are clearly mentioned in the user's latest message.
-    - For all other fields, leave them as null or do not include them.
+    - Carefully analyze the user's message and extract as much information as possible for ALL of the following fields:
+      destination, departure_location, journey_dates, travel_style, travel_pace, travelers_count, budget, spending_priorities, interests, accommodation_preference, accommodation_type, important_amenities, location_preference, dietary_restrictions, accessibility_requirements.
+    - Always use these exact field names in "extracted_info".
+    - For travel dates, always use the field "journey_dates" (not start_date or end_date).
+    - If a field can be reasonably inferred from the user's message, fill it in. If not, set it to null.
+    - For the next question, use ONLY these keys: ${Object.keys(TRAVEL_QUESTIONS).join(', ')}. Do not invent new keys.
     - Respond in this JSON format (no markdown, no extra text):
 
     {
       "response": "Your friendly reply and the next question",
       "extracted_info": {
-        // Only fields mentioned in the user's latest message
+        // All fields, using the allowed field names, filled in if possible, otherwise null
       },
       "next_question": "the next question key or null if complete",
       "completion_percentage": "updated percentage"
