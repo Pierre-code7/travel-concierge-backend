@@ -1,4 +1,4 @@
-// server.js - Travel Concierge AI Backend - UPDATED FOR RAILWAY REDEPLOY
+// server.js - Travel Concierge AI Backend - UPDATED FOR RAILWAY REDEPLOY HEHE
 // Add this at the very top of server.js for debugging
 console.log('Environment check:');
 console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? 'SET' : 'MISSING');
